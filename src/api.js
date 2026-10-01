@@ -16,6 +16,10 @@ export const createRoom = (data) => api.post('/rooms', data)
 export const updateRoom = (id, data) => api.put(`/rooms/${id}`, data)
 export const deleteRoom = (id) => api.delete(`/rooms/${id}`)
 
+// Operational Check-In and Check-Out
+export const checkInGuest = (data) => api.post('/check-in', data)
+export const checkOutGuest = (data) => api.post('/check-out', data)
+
 // Reservations endpoints
 export const getReservations = () => api.get('/reservations')
 export const createReservation = (data) => api.post('/reservations', data)

@@ -1,32 +1,21 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LogIn,
   CheckCircle2,
-  User,
-  CreditCard,
-  KeyRound,
-  FileText,
   Calendar,
-  Phone,
-  Mail,
-  MapPin,
-  Car,
   Wifi,
   Coffee,
-  X,
-  Sparkles
+  KeyRound,
+  Loader2
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
-
-const availableRooms = [
-  { number: '101', type: 'Deluxe Room', floor: '1st Floor', rate: 8500 },
-  { number: '103', type: 'Standard Nature Room', floor: '1st Floor', rate: 5500 },
-  { number: '201', type: 'Deluxe Room (Reserved for Nimal)', floor: '2nd Floor', rate: 8500 },
-  { number: '301', type: 'Presidential Villa', floor: '3rd Floor', rate: 35000 },
-]
+import { getRooms, checkInGuest } from '../api'
 
 export default function CheckIn() {
+  const [availableRooms, setAvailableRooms] = useState([])
+  const [loading, setLoading] = useState(true)
+
   const [formData, setFormData] = useState({
     guestName: '',
     nicPassport: '',
@@ -34,7 +23,7 @@ export default function CheckIn() {
     phone: '',
     email: '',
     vehicleNumber: '',
-    roomNumber: '101',
+    roomNumber: '',
     adults: 2,
     children: 0,
     checkInDate: '2026-10-01',
@@ -50,39 +39,85 @@ export default function CheckIn() {
     { id: 'CHK-902', name: 'Amal Perera', room: '102', time: '11:40 AM', nights: 2, deposit: 'Rs. 15,000' },
   ])
 
-  const selectedRoom = availableRooms.find(r => r.number === formData.roomNumber) || availableRooms[0]
+  // Fetch available rooms from MySQL
+  const loadRooms = async () => {
+    try {
+      setLoading(true)
+      const res = await getRooms()
+      // Filter for Available or Reserved rooms
+      const freeRooms = res.data.filter(r => r.status === 'Available' || r.status === 'Reserved')
+      setAvailableRooms(freeRooms)
+      if (freeRooms.length > 0) {
+        setFormData(prev => ({ ...prev, roomNumber: freeRooms[0].number }))
+      }
+    } catch (err) {
+      console.error('Failed to load rooms:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRooms()
+  }, [])
+
+  const selectedRoom = availableRooms.find(r => r.number === formData.roomNumber) || {
+    rate: 8500,
+    price: 8500,
+    type: 'Deluxe Room',
+    number: '101'
+  }
+
+  const roomRate = Number(selectedRoom.price || selectedRoom.rate || 8500)
 
   // Calculate nights
   const d1 = new Date(formData.checkInDate)
   const d2 = new Date(formData.checkOutDate)
   const nights = Math.max(Math.ceil((d2 - d1) / (1000 * 60 * 60 * 24)), 1)
-  const totalAmount = nights * selectedRoom.rate
+  const totalAmount = nights * roomRate
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!formData.guestName || !formData.nicPassport) return
+    if (!formData.guestName || !formData.nicPassport || !formData.roomNumber) return
 
-    const newRecord = {
-      id: `CHK-${Math.floor(100 + Math.random() * 900)}`,
-      name: formData.guestName,
-      room: formData.roomNumber,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      nights: nights,
-      deposit: `Rs. ${Number(formData.advancePaid).toLocaleString()}`
+    try {
+      // Send to Laravel API -> Updates Room to Occupied & adds Guest to CRM
+      await checkInGuest({
+        room_number: formData.roomNumber,
+        guest_name: formData.guestName,
+        phone: formData.phone,
+        nic_passport: formData.nicPassport,
+        nationality: formData.nationality,
+        advance_paid: formData.advancePaid
+      })
+
+      const newRecord = {
+        id: `CHK-${Math.floor(100 + Math.random() * 900)}`,
+        name: formData.guestName,
+        room: formData.roomNumber,
+        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        nights: nights,
+        deposit: `Rs. ${Number(formData.advancePaid).toLocaleString()}`
+      }
+
+      setRecentCheckIns([newRecord, ...recentCheckIns])
+
+      // Generate Reception Welcome Key Card Slip
+      setActiveCheckInSlip({
+        ...formData,
+        bookingRef: newRecord.id,
+        roomType: selectedRoom.type,
+        nights,
+        totalAmount,
+        balance: Math.max(totalAmount - formData.advancePaid, 0),
+        wifiPass: 'RoyalCeylon@2026'
+      })
+
+      // Refresh available rooms
+      loadRooms()
+    } catch (err) {
+      alert('Check-in error: ' + (err.response?.data?.message || err.message))
     }
-
-    setRecentCheckIns([newRecord, ...recentCheckIns])
-
-    // Generate Reception Welcome Key Card Slip
-    setActiveCheckInSlip({
-      ...formData,
-      bookingRef: newRecord.id,
-      roomType: selectedRoom.type,
-      nights,
-      totalAmount,
-      balance: Math.max(totalAmount - formData.advancePaid, 0),
-      wifiPass: 'RoyalCeylon@2026'
-    })
   }
 
   return (
@@ -105,417 +140,425 @@ export default function CheckIn() {
             </h1>
           </div>
           <p style={{ color: '#74c69d', fontSize: '14px', marginTop: '4px' }}>
-            Register arriving guests, issue room key cards, and collect initial deposits
+            Directly flips room status to 'Occupied' in MySQL & logs guest to CRM
           </p>
         </motion.div>
 
-        {/* 2 Column Layout: Check-In Form & Recent Check-Ins Sidebar */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '24px' }}>
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#c9a84c' }}>
+            <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 12px auto' }} />
+            <p style={{ color: '#74c69d', fontSize: '14px' }}>Loading available rooms...</p>
+          </div>
+        ) : (
+          /* 2 Column Layout: Check-In Form & Recent Check-Ins Sidebar */
+          <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '24px' }}>
 
-          {/* Form Card */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            style={{
-              background: 'rgba(255, 255, 255, 0.04)',
-              backdropFilter: 'blur(10px)',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
-              borderRadius: '20px',
-              padding: '28px'
-            }}
-          >
-            <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '20px', marginBottom: '20px' }}>
-              Registration & Room Allocation
-            </h2>
-
-            <form onSubmit={handleSubmit}>
-              {/* Personal Details */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>GUEST FULL NAME</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Kasun Chamara"
-                    value={formData.guestName}
-                    onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PASSPORT / NIC NUMBER</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 19951230456V / N8765432"
-                    value={formData.nicPassport}
-                    onChange={(e) => setFormData({ ...formData, nicPassport: e.target.value })}
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Contact info */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PHONE</label>
-                  <input
-                    type="text"
-                    placeholder="+94 77 000 0000"
-                    value={formData.phone}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>NATIONALITY</label>
-                  <input
-                    type="text"
-                    value={formData.nationality}
-                    onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>VEHICLE (OPTIONAL)</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. CAB-1234"
-                    value={formData.vehicleNumber}
-                    onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Room Selection & Dates */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>ASSIGN AVAILABLE ROOM</label>
-                  <select
-                    value={formData.roomNumber}
-                    onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: '#0d2415',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  >
-                    {availableRooms.map((r) => (
-                      <option key={r.number} value={r.number}>
-                        Room #{r.number} - {r.type} (Rs. {r.rate})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                  <div>
-                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>ADULTS</label>
-                    <input
-                      type="number"
-                      min="1"
-                      value={formData.adults}
-                      onChange={(e) => setFormData({ ...formData, adults: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(116,198,157,0.3)',
-                        borderRadius: '8px',
-                        color: 'white',
-                        fontSize: '13px',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHILDREN</label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={formData.children}
-                      onChange={(e) => setFormData({ ...formData, children: e.target.value })}
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        background: 'rgba(255,255,255,0.06)',
-                        border: '1px solid rgba(116,198,157,0.3)',
-                        borderRadius: '8px',
-                        color: 'white',
-                        fontSize: '13px',
-                        outline: 'none'
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Dates */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHECK-IN DATE</label>
-                  <input
-                    type="date"
-                    value={formData.checkInDate}
-                    onChange={(e) => setFormData({ ...formData, checkInDate: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: '#0d2415',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHECK-OUT DATE</label>
-                  <input
-                    type="date"
-                    value={formData.checkOutDate}
-                    onChange={(e) => setFormData({ ...formData, checkOutDate: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: '#0d2415',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-              </div>
-
-              {/* Payment Advance */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>DEPOSIT / ADVANCE PAID (Rs.)</label>
-                  <input
-                    type="number"
-                    value={formData.advancePaid}
-                    onChange={(e) => setFormData({ ...formData, advancePaid: Number(e.target.value) })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: 'rgba(255,255,255,0.06)',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PAYMENT METHOD</label>
-                  <select
-                    value={formData.paymentMethod}
-                    onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: '10px 12px',
-                      background: '#0d2415',
-                      border: '1px solid rgba(116,198,157,0.3)',
-                      borderRadius: '8px',
-                      color: 'white',
-                      fontSize: '13px',
-                      outline: 'none'
-                    }}
-                  >
-                    <option>Cash</option>
-                    <option>Visa / MasterCard</option>
-                    <option>Bank Transfer</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Live Cost Summary Bar */}
-              <div style={{
-                background: 'rgba(201,168,76,0.08)',
-                border: '1px solid rgba(201,168,76,0.25)',
-                borderRadius: '12px',
-                padding: '14px 18px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '20px'
-              }}>
-                <div>
-                  <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Stay Duration</span>
-                  <div style={{ color: 'white', fontWeight: 600 }}>{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Room Rate</span>
-                  <div style={{ color: 'white', fontWeight: 600 }}>Rs. {selectedRoom.rate.toLocaleString()} / night</div>
-                </div>
-                <div>
-                  <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Total Bill</span>
-                  <div style={{ color: '#c9a84c', fontWeight: 700, fontSize: '17px' }}>Rs. {totalAmount.toLocaleString()}</div>
-                </div>
-              </div>
-
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                type="submit"
-                style={{
-                  width: '100%',
-                  padding: '14px',
-                  background: 'linear-gradient(135deg, #c9a84c, #f0c96b)',
-                  color: '#0a1a0e',
-                  border: 'none',
-                  borderRadius: '12px',
-                  fontWeight: 700,
-                  fontSize: '15px',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <KeyRound size={18} /> Complete Check-In & Issue Key
-              </motion.button>
-            </form>
-          </motion.div>
-
-          {/* Right Column: Hotel Info & Today's Check-ins */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-
-            {/* Quick Reception Info */}
+            {/* Form Card */}
             <motion.div
-              initial={{ opacity: 0, x: 20 }}
+              initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              style={{
-                background: 'rgba(64,145,108,0.1)',
-                border: '1px solid rgba(64,145,108,0.25)',
-                borderRadius: '16px',
-                padding: '20px'
-              }}
-            >
-              <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#74c69d', fontSize: '16px', margin: '0 0 12px 0' }}>
-                Reception Desk Quick Info
-              </h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: '#cbd5e1' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Wifi size={14} color="#74c69d" />
-                  <span>Guest WiFi: <strong>Royal_Guest_5G</strong> (Pass: <code>Ceylon@2026</code>)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Coffee size={14} color="#74c69d" />
-                  <span>Complimentary Breakfast: <strong>06:30 AM - 10:30 AM</strong> (Lotus Hall)</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <Calendar size={14} color="#74c69d" />
-                  <span>Standard Check-Out Time: <strong>12:00 PM (Noon)</strong></span>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Today's Recent Check-Ins */}
-            <motion.div
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.1 }}
               style={{
                 background: 'rgba(255, 255, 255, 0.04)',
                 backdropFilter: 'blur(10px)',
                 border: '1px solid rgba(255, 255, 255, 0.08)',
-                borderRadius: '16px',
-                padding: '20px',
-                flex: 1
+                borderRadius: '20px',
+                padding: '28px'
               }}
             >
-              <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '18px', margin: '0 0 16px 0' }}>
-                Today's Arrivals
-              </h3>
+              <h2 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '20px', marginBottom: '20px' }}>
+                Registration & Room Key Card Issue
+              </h2>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {recentCheckIns.map((item, idx) => (
-                  <div
-                    key={idx}
-                    style={{
-                      background: 'rgba(255, 255, 255, 0.03)',
-                      border: '1px solid rgba(255, 255, 255, 0.06)',
-                      borderRadius: '12px',
-                      padding: '12px 14px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
-                    }}
-                  >
-                    <div>
-                      <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>{item.name}</div>
-                      <div style={{ color: '#74c69d', fontSize: '11px', marginTop: '2px' }}>
-                        Room #{item.room} • {item.nights} Nights • {item.time}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: '12px', color: '#c9a84c', fontWeight: 600 }}>
-                      {item.deposit}
-                    </span>
+              <form onSubmit={handleSubmit}>
+                {/* Personal Details */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>GUEST FULL NAME</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Kasun Chamara"
+                      value={formData.guestName}
+                      onChange={(e) => setFormData({ ...formData, guestName: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
                   </div>
-                ))}
-              </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PASSPORT / NIC NUMBER</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 19951230456V / N8765432"
+                      value={formData.nicPassport}
+                      onChange={(e) => setFormData({ ...formData, nicPassport: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Contact info */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PHONE</label>
+                    <input
+                      type="text"
+                      placeholder="+94 77 000 0000"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      required
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>NATIONALITY</label>
+                    <input
+                      type="text"
+                      value={formData.nationality}
+                      onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>VEHICLE (OPTIONAL)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. CAB-1234"
+                      value={formData.vehicleNumber}
+                      onChange={(e) => setFormData({ ...formData, vehicleNumber: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Room Selection & Dates */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>ASSIGN AVAILABLE ROOM (FROM MYSQL)</label>
+                    <select
+                      value={formData.roomNumber}
+                      onChange={(e) => setFormData({ ...formData, roomNumber: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: '#0d2415',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    >
+                      {availableRooms.map((r) => (
+                        <option key={r.number} value={r.number}>
+                          Room #{r.number} - {r.type} (Rs. {Number(r.price).toLocaleString()}) [{r.status}]
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                    <div>
+                      <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>ADULTS</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={formData.adults}
+                        onChange={(e) => setFormData({ ...formData, adults: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(116,198,157,0.3)',
+                          borderRadius: '8px',
+                          color: 'white',
+                          fontSize: '13px',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHILDREN</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={formData.children}
+                        onChange={(e) => setFormData({ ...formData, children: e.target.value })}
+                        style={{
+                          width: '100%',
+                          padding: '10px 12px',
+                          background: 'rgba(255,255,255,0.06)',
+                          border: '1px solid rgba(116,198,157,0.3)',
+                          borderRadius: '8px',
+                          color: 'white',
+                          fontSize: '13px',
+                          outline: 'none'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dates */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHECK-IN DATE</label>
+                    <input
+                      type="date"
+                      value={formData.checkInDate}
+                      onChange={(e) => setFormData({ ...formData, checkInDate: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: '#0d2415',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>CHECK-OUT DATE</label>
+                    <input
+                      type="date"
+                      value={formData.checkOutDate}
+                      onChange={(e) => setFormData({ ...formData, checkOutDate: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: '#0d2415',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Payment Advance */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '14px', marginBottom: '20px' }}>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>DEPOSIT / ADVANCE PAID (Rs.)</label>
+                    <input
+                      type="number"
+                      value={formData.advancePaid}
+                      onChange={(e) => setFormData({ ...formData, advancePaid: Number(e.target.value) })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', color: '#74c69d', fontSize: '12px', marginBottom: '6px' }}>PAYMENT METHOD</label>
+                    <select
+                      value={formData.paymentMethod}
+                      onChange={(e) => setFormData({ ...formData, paymentMethod: e.target.value })}
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        background: '#0d2415',
+                        border: '1px solid rgba(116,198,157,0.3)',
+                        borderRadius: '8px',
+                        color: 'white',
+                        fontSize: '13px',
+                        outline: 'none'
+                      }}
+                    >
+                      <option>Cash</option>
+                      <option>Visa / MasterCard</option>
+                      <option>Bank Transfer</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Live Cost Summary Bar */}
+                <div style={{
+                  background: 'rgba(201,168,76,0.08)',
+                  border: '1px solid rgba(201,168,76,0.25)',
+                  borderRadius: '12px',
+                  padding: '14px 18px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  marginBottom: '20px'
+                }}>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Stay Duration</span>
+                    <div style={{ color: 'white', fontWeight: 600 }}>{nights} {nights === 1 ? 'Night' : 'Nights'}</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Room Rate</span>
+                    <div style={{ color: 'white', fontWeight: 600 }}>Rs. {roomRate.toLocaleString()} / night</div>
+                  </div>
+                  <div>
+                    <span style={{ fontSize: '12px', color: '#a8b2aa' }}>Total Bill</span>
+                    <div style={{ color: '#c9a84c', fontWeight: 700, fontSize: '17px' }}>Rs. {totalAmount.toLocaleString()}</div>
+                  </div>
+                </div>
+
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  type="submit"
+                  style={{
+                    width: '100%',
+                    padding: '14px',
+                    background: 'linear-gradient(135deg, #c9a84c, #f0c96b)',
+                    color: '#0a1a0e',
+                    border: 'none',
+                    borderRadius: '12px',
+                    fontWeight: 700,
+                    fontSize: '15px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <KeyRound size={18} /> Complete Check-In & Flip Room to Occupied
+                </motion.button>
+              </form>
             </motion.div>
 
-          </div>
+            {/* Right Column: Hotel Info & Today's Check-ins */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
-        </div>
+              {/* Quick Reception Info */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                style={{
+                  background: 'rgba(64,145,108,0.1)',
+                  border: '1px solid rgba(64,145,108,0.25)',
+                  borderRadius: '16px',
+                  padding: '20px'
+                }}
+              >
+                <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#74c69d', fontSize: '16px', margin: '0 0 12px 0' }}>
+                  Reception Desk Quick Info
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '12px', color: '#cbd5e1' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Wifi size={14} color="#74c69d" />
+                    <span>Guest WiFi: <strong>Royal_Guest_5G</strong> (Pass: <code>Ceylon@2026</code>)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Coffee size={14} color="#74c69d" />
+                    <span>Complimentary Breakfast: <strong>06:30 AM - 10:30 AM</strong> (Lotus Hall)</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Calendar size={14} color="#74c69d" />
+                    <span>Standard Check-Out Time: <strong>12:00 PM (Noon)</strong></span>
+                  </div>
+                </div>
+              </motion.div>
+
+              {/* Today's Recent Check-Ins */}
+              <motion.div
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.04)',
+                  backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderRadius: '16px',
+                  padding: '20px',
+                  flex: 1
+                }}
+              >
+                <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '18px', margin: '0 0 16px 0' }}>
+                  Today's Arrivals
+                </h3>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {recentCheckIns.map((item, idx) => (
+                    <div
+                      key={idx}
+                      style={{
+                        background: 'rgba(255, 255, 255, 0.03)',
+                        border: '1px solid rgba(255, 255, 255, 0.06)',
+                        borderRadius: '12px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}
+                    >
+                      <div>
+                        <div style={{ color: 'white', fontWeight: 600, fontSize: '13px' }}>{item.name}</div>
+                        <div style={{ color: '#74c69d', fontSize: '11px', marginTop: '2px' }}>
+                          Room #{item.room} • {item.nights} Nights • {item.time}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '12px', color: '#c9a84c', fontWeight: 600 }}>
+                        {item.deposit}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+
+            </div>
+
+          </div>
+        )}
 
       </div>
 
