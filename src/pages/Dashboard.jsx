@@ -1,11 +1,22 @@
 import { motion } from 'framer-motion'
+import {
+  BedDouble,
+  Users,
+  CalendarDays,
+  BadgeDollarSign,
+  LogIn,
+  LogOut,
+  Wallet,
+  Zap,
+  Hotel
+} from 'lucide-react'
 import Sidebar from '../components/Sidebar'
 
 const stats = [
-  { icon: '🛏️', label: 'Total Rooms',     value: '48',      sub: '12 Available',      color: '#40916c' },
-  { icon: '👤', label: 'Guests Today',    value: '24',      sub: '6 Checked In',      color: '#c9a84c' },
-  { icon: '📅', label: 'Reservations',    value: '18',      sub: '5 This Week',       color: '#74c69d' },
-  { icon: '💰', label: "Today's Revenue", value: 'Rs. 84K', sub: '+12% vs yesterday', color: '#f0c96b' },
+  { icon: BedDouble,        label: 'Total Rooms',     value: '48',      sub: '12 Available',      color: '#3b82f6', bg: 'rgba(59,130,246,0.2)'  },
+  { icon: Users,            label: 'Guests Today',    value: '24',      sub: '6 Checked In',      color: '#22c55e', bg: 'rgba(34,197,94,0.2)'   },
+  { icon: CalendarDays,     label: 'Reservations',    value: '18',      sub: '5 This Week',       color: '#a855f7', bg: 'rgba(168,85,247,0.2)'  },
+  { icon: BadgeDollarSign,  label: "Today's Revenue", value: 'Rs. 84K', sub: '+12% vs yesterday', color: '#f97316', bg: 'rgba(249,115,22,0.2)'  },
 ]
 
 const rooms = [
@@ -26,11 +37,11 @@ const statusColor = {
 
 export default function Dashboard() {
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0a1a0e' }}>
+    <div style={{ display: 'flex', minHeight: '100vh' }}>
       <Sidebar />
 
       {/* Main Content */}
-      <div style={{ marginLeft: '240px', flex: 1, padding: '32px' }}>
+      <div style={{ marginLeft: '240px', flex: 1, padding: '32px', position: 'relative', zIndex: 10 }}>
 
         {/* Header */}
         <motion.div
@@ -44,7 +55,7 @@ export default function Dashboard() {
             color: '#c9a84c',
             marginBottom: '4px',
           }}>
-            Welcome Back! 🌿
+            Welcome Back!
           </h1>
           <p style={{ color: '#74c69d', fontSize: '14px' }}>
             {new Date().toLocaleDateString('en-US', {
@@ -75,14 +86,29 @@ export default function Dashboard() {
                 borderRadius: '16px',
                 padding: '24px',
                 cursor: 'default',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '16px',
               }}
             >
-              <div style={{ fontSize: '36px', marginBottom: '12px' }}>{stat.icon}</div>
-              <h3 style={{ color: stat.color, fontSize: '28px', fontWeight: 700, marginBottom: '4px' }}>
-                {stat.value}
-              </h3>
-              <p style={{ color: 'white', fontSize: '14px', marginBottom: '4px' }}>{stat.label}</p>
-              <p style={{ color: '#74c69d', fontSize: '12px' }}>{stat.sub}</p>
+              <div style={{
+                width: '52px', height: '52px',
+                background: stat.bg,
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <stat.icon size={24} color={stat.color} strokeWidth={1.8} />
+              </div>
+              <div>
+                <p style={{ color: '#a8b2aa', fontSize: '12px', letterSpacing: '1px', marginBottom: '4px', textTransform: 'uppercase' }}>{stat.label}</p>
+                <h3 style={{ color: 'white', fontSize: '26px', fontWeight: 700, marginBottom: '2px' }}>
+                  {stat.value}
+                </h3>
+                <p style={{ color: '#74c69d', fontSize: '12px' }}>{stat.sub}</p>
+              </div>
             </motion.div>
           ))}
         </div>
@@ -103,14 +129,17 @@ export default function Dashboard() {
               padding: '24px',
             }}
           >
-            <h2 style={{
-              fontFamily: 'Playfair Display, serif',
-              color: '#c9a84c',
-              fontSize: '20px',
-              marginBottom: '20px',
-            }}>
-              🛏️ Room Status Overview
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '20px' }}>
+              <BedDouble size={22} color="#c9a84c" />
+              <h2 style={{
+                fontFamily: 'Playfair Display, serif',
+                color: '#c9a84c',
+                fontSize: '20px',
+                margin: 0,
+              }}>
+                Room Status Overview
+              </h2>
+            </div>
 
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
@@ -171,56 +200,62 @@ export default function Dashboard() {
               padding: '24px',
             }}
           >
-            <h2 style={{
-              fontFamily: 'Playfair Display, serif',
-              color: '#c9a84c',
-              fontSize: '20px',
-              marginBottom: '20px',
-            }}>
-              ⚡ Quick Actions
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+              <Zap size={20} color="#c9a84c" />
+              <h2 style={{
+                fontFamily: 'Playfair Display, serif',
+                color: '#c9a84c',
+                fontSize: '20px',
+                margin: 0,
+              }}>
+                Quick Actions
+              </h2>
+            </div>
 
             {[
-              { icon: '✅', label: 'New Check In',    color: '#40916c' },
-              { icon: '🚪', label: 'Check Out Guest', color: '#c9a84c' },
-              { icon: '📅', label: 'New Reservation', color: '#74c69d' },
-              { icon: '🛏️', label: 'Add Room',        color: '#f0c96b' },
-              { icon: '💰', label: 'View Billing',    color: '#40916c' },
-            ].map((action, i) => (
-              <motion.button
-                key={i}
-                whileHover={{ x: 6, background: 'rgba(255,255,255,0.1)' }}
-                whileTap={{ scale: 0.97 }}
-                style={{
-                  width: '100%',
-                  padding: '14px 16px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.08)',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  marginBottom: '8px',
-                  textAlign: 'left',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
-              >
-                <span style={{
-                  width: '32px', height: '32px',
-                  background: `${action.color}22`,
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '16px',
-                }}>
-                  {action.icon}
-                </span>
-                {action.label}
-              </motion.button>
-            ))}
+              { icon: LogIn,       label: 'New Check In',    color: '#22c55e', bg: 'rgba(34,197,94,0.15)'   },
+              { icon: LogOut,      label: 'Check Out Guest', color: '#f97316', bg: 'rgba(249,115,22,0.15)'  },
+              { icon: CalendarDays,label: 'New Reservation', color: '#a855f7', bg: 'rgba(168,85,247,0.15)'  },
+              { icon: BedDouble,   label: 'Add Room',        color: '#3b82f6', bg: 'rgba(59,130,246,0.15)'  },
+              { icon: Wallet,      label: 'View Billing',    color: '#c9a84c', bg: 'rgba(201,168,76,0.15)'  },
+            ].map((action, i) => {
+              const ActionIcon = action.icon
+              return (
+                <motion.button
+                  key={i}
+                  whileHover={{ x: 6, background: 'rgba(255,255,255,0.1)' }}
+                  whileTap={{ scale: 0.97 }}
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    background: 'rgba(255,255,255,0.05)',
+                    border: '1px solid rgba(255,255,255,0.08)',
+                    borderRadius: '12px',
+                    color: 'white',
+                    fontSize: '14px',
+                    cursor: 'pointer',
+                    marginBottom: '8px',
+                    textAlign: 'left',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                  }}
+                >
+                  <span style={{
+                    width: '32px', height: '32px',
+                    background: action.bg,
+                    borderRadius: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}>
+                    <ActionIcon size={16} color={action.color} strokeWidth={2} />
+                  </span>
+                  {action.label}
+                </motion.button>
+              )
+            })}
 
             {/* Room availability summary */}
             <div style={{
@@ -230,7 +265,10 @@ export default function Dashboard() {
               borderRadius: '12px',
               border: '1px solid rgba(64,145,108,0.2)',
             }}>
-              <p style={{ color: '#74c69d', fontSize: '12px', marginBottom: '8px' }}>🏨 Room Availability</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '8px' }}>
+                <Hotel size={14} color="#74c69d" />
+                <p style={{ color: '#74c69d', fontSize: '12px', margin: 0 }}>Room Availability</p>
+              </div>
               {[
                 { label: 'Available', count: 12, color: '#74c69d' },
                 { label: 'Occupied',  count: 28, color: '#ff6b7a' },

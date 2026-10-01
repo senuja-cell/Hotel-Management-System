@@ -1,24 +1,32 @@
 import { NavLink, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import {
+  LayoutDashboard,
+  BedDouble,
+  CalendarDays,
+  LogIn,
+  LogOut,
+  Users,
+  Receipt,
+  UserCog,
+  BarChart3,
+  Hotel,
+} from 'lucide-react'
 
 const navItems = [
-  { path: '/dashboard',    icon: '📊', label: 'Dashboard'    },
-  { path: '/rooms',        icon: '🛏️', label: 'Rooms'         },
-  { path: '/reservations', icon: '📅', label: 'Reservations'  },
-  { path: '/checkin',      icon: '✅', label: 'Check In'      },
-  { path: '/checkout',     icon: '🚪', label: 'Check Out'     },
-  { path: '/guests',       icon: '👤', label: 'Guests'        },
-  { path: '/billing',      icon: '💰', label: 'Billing'       },
-  { path: '/staff',        icon: '👨‍💼', label: 'Staff'         },
-  { path: '/reports',      icon: '📈', label: 'Reports'       },
+  { path: '/dashboard',    icon: LayoutDashboard, label: 'Dashboard'    },
+  { path: '/rooms',        icon: BedDouble,        label: 'Rooms'        },
+  { path: '/reservations', icon: CalendarDays,     label: 'Reservations' },
+  { path: '/checkin',      icon: LogIn,            label: 'Check In'     },
+  { path: '/checkout',     icon: LogOut,           label: 'Check Out'    },
+  { path: '/guests',       icon: Users,            label: 'Guests'       },
+  { path: '/billing',      icon: Receipt,          label: 'Billing'      },
+  { path: '/staff',        icon: UserCog,          label: 'Staff'        },
+  { path: '/reports',      icon: BarChart3,        label: 'Reports'      },
 ]
 
 export default function Sidebar() {
   const navigate = useNavigate()
-
-  const handleLogout = () => {
-    navigate('/login')
-  }
 
   return (
     <motion.div
@@ -47,9 +55,19 @@ export default function Sidebar() {
         <motion.div
           animate={{ rotate: [0, 5, -5, 0] }}
           transition={{ duration: 4, repeat: Infinity }}
-          style={{ fontSize: '40px', marginBottom: '8px' }}
+          style={{ marginBottom: '10px', display: 'flex', justifyContent: 'center' }}
         >
-          🐘
+          <div style={{
+            width: '56px', height: '56px',
+            background: 'linear-gradient(135deg, #c9a84c22, #c9a84c44)',
+            border: '1px solid rgba(201,168,76,0.4)',
+            borderRadius: '16px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+            <Hotel size={28} color="#c9a84c" />
+          </div>
         </motion.div>
         <h2 style={{
           fontFamily: 'Playfair Display, serif',
@@ -67,37 +85,44 @@ export default function Sidebar() {
 
       {/* Navigation */}
       <nav style={{ flex: 1, padding: '16px 12px', overflowY: 'auto' }}>
-        {navItems.map((item, i) => (
-          <motion.div
-            key={item.path}
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.07 }}
-          >
-            <NavLink
-              to={item.path}
-              style={({ isActive }) => ({
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 16px',
-                borderRadius: '12px',
-                marginBottom: '4px',
-                textDecoration: 'none',
-                color: isActive ? '#0a1a0e' : '#a8b2aa',
-                background: isActive
-                  ? 'linear-gradient(135deg, #c9a84c, #f0c96b)'
-                  : 'transparent',
-                fontWeight: isActive ? 600 : 400,
-                fontSize: '14px',
-                transition: 'all 0.2s ease',
-              })}
+        {navItems.map((item, i) => {
+          const Icon = item.icon
+          return (
+            <motion.div
+              key={item.path}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: i * 0.07 }}
             >
-              <span style={{ fontSize: '18px' }}>{item.icon}</span>
-              {item.label}
-            </NavLink>
-          </motion.div>
-        ))}
+              <NavLink
+                to={item.path}
+                style={({ isActive }) => ({
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                  padding: '11px 14px',
+                  borderRadius: '12px',
+                  marginBottom: '4px',
+                  textDecoration: 'none',
+                  color: isActive ? '#0a1a0e' : '#a8b2aa',
+                  background: isActive
+                    ? 'linear-gradient(135deg, #c9a84c, #f0c96b)'
+                    : 'transparent',
+                  fontWeight: isActive ? 600 : 400,
+                  fontSize: '14px',
+                  transition: 'all 0.2s ease',
+                })}
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon size={18} strokeWidth={isActive ? 2.5 : 1.8} />
+                    {item.label}
+                  </>
+                )}
+              </NavLink>
+            </motion.div>
+          )
+        })}
       </nav>
 
       {/* User & Logout */}
@@ -121,8 +146,9 @@ export default function Sidebar() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: '16px',
-          }}>👤</div>
+          }}>
+            <UserCog size={18} color="#0a1a0e" />
+          </div>
           <div>
             <p style={{ color: 'white', fontSize: '13px', fontWeight: 600 }}>Admin User</p>
             <p style={{ color: '#74c69d', fontSize: '11px' }}>Hotel Manager</p>
@@ -132,7 +158,7 @@ export default function Sidebar() {
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
-          onClick={handleLogout}
+          onClick={() => navigate('/login')}
           style={{
             width: '100%',
             padding: '10px',
@@ -143,9 +169,14 @@ export default function Sidebar() {
             cursor: 'pointer',
             fontSize: '13px',
             fontWeight: 500,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
           }}
         >
-          🚪 Logout
+          <LogOut size={15} />
+          Logout
         </motion.button>
       </div>
     </motion.div>
