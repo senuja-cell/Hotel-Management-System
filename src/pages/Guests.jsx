@@ -1,89 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Users,
   Search,
   Plus,
   Crown,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar,
-  DollarSign,
-  Heart,
-  History,
+  Trash2,
   X,
-  Trash2
+  Heart,
+  Loader2
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
-
-const initialGuests = [
-  {
-    id: 'GST-001',
-    name: 'Dr. John Smith',
-    country: 'United Kingdom',
-    phone: '+44 7911 123456',
-    email: 'dr.smith@oxford.ac.uk',
-    nicPassport: 'GB89234102',
-    tier: 'Platinum VIP',
-    totalStays: 4,
-    lifetimeSpend: 285000,
-    preferredRoom: 'Royal Ocean Suite',
-    notes: 'Prefers extra quiet top-floor room, sparkling water on arrival.'
-  },
-  {
-    id: 'GST-002',
-    name: 'Amal Perera',
-    country: 'Sri Lanka',
-    phone: '+94 77 234 5678',
-    email: 'amal.perera@dialog.lk',
-    nicPassport: '19841203491V',
-    tier: 'Gold VIP',
-    totalStays: 3,
-    lifetimeSpend: 84000,
-    preferredRoom: 'Deluxe Room',
-    notes: 'Vegetarian meals, late check-out requested when possible.'
-  },
-  {
-    id: 'GST-003',
-    name: 'Sarah Jenkins',
-    country: 'Australia',
-    phone: '+61 412 345 678',
-    email: 'sarah.j@sydney.com.au',
-    nicPassport: 'PA7823901',
-    tier: 'Platinum VIP',
-    totalStays: 2,
-    lifetimeSpend: 210000,
-    preferredRoom: 'Presidential Villa',
-    notes: 'Celebrates wedding anniversary in October. Allergic to peanuts.'
-  },
-  {
-    id: 'GST-004',
-    name: 'Kumari Jayasinghe',
-    country: 'Sri Lanka',
-    phone: '+94 71 456 7890',
-    email: 'kumari.j@gmail.com',
-    nicPassport: '19925670123V',
-    tier: 'Regular Guest',
-    totalStays: 1,
-    lifetimeSpend: 17000,
-    preferredRoom: 'Standard Nature Room',
-    notes: 'First time visitor, enjoys morning bird watching tours.'
-  },
-  {
-    id: 'GST-005',
-    name: 'Elena Rostova',
-    country: 'Russia',
-    phone: '+7 903 123 4567',
-    email: 'elena.rostova@mail.ru',
-    nicPassport: 'RU67891234',
-    tier: 'Gold VIP',
-    totalStays: 2,
-    lifetimeSpend: 68000,
-    preferredRoom: 'Deluxe Room',
-    notes: 'Requests airport transfer on departure.'
-  }
-]
+import { getGuests, createGuest, deleteGuest } from '../api'
 
 const tierStyles = {
   'Platinum VIP': { bg: 'rgba(201, 168, 76, 0.2)', border: 'rgba(201, 168, 76, 0.5)', color: '#f0c96b' },
@@ -92,7 +20,8 @@ const tierStyles = {
 }
 
 export default function Guests() {
-  const [guests, setGuests] = useState(initialGuests)
+  const [guests, setGuests] = useState([])
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [tierFilter, setTierFilter] = useState('All')
   const [showAddModal, setShowAddModal] = useState(false)
@@ -103,50 +32,81 @@ export default function Guests() {
     country: 'Sri Lanka',
     phone: '',
     email: '',
-    nicPassport: '',
+    nic_passport: '',
     tier: 'Regular Guest',
-    preferredRoom: 'Deluxe Room',
+    preferred_room: 'Deluxe Room',
     notes: ''
   })
+
+  // Fetch guests from Laravel REST API
+  const fetchLiveGuests = async () => {
+    try {
+      setLoading(true)
+      const res = await getGuests()
+      setGuests(res.data)
+    } catch (err) {
+      console.error('Failed to load guests from API:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchLiveGuests()
+  }, [])
 
   // Filter & Search
   const filtered = guests.filter(g => {
     const matchesTier = tierFilter === 'All' || g.tier === tierFilter
-    const matchesSearch = g.name.toLowerCase().includes(search.toLowerCase()) ||
-                          g.country.toLowerCase().includes(search.toLowerCase()) ||
-                          g.phone.includes(search) ||
-                          g.nicPassport.toLowerCase().includes(search.toLowerCase())
+    const name = g.name || ''
+    const country = g.country || ''
+    const phone = g.phone || ''
+    const passport = g.nic_passport || ''
+    const matchesSearch = name.toLowerCase().includes(search.toLowerCase()) ||
+                          country.toLowerCase().includes(search.toLowerCase()) ||
+                          phone.includes(search) ||
+                          passport.toLowerCase().includes(search.toLowerCase())
     return matchesTier && matchesSearch
   })
 
-  const handleAddGuest = (e) => {
+  // Add guest via POST to MySQL
+  const handleAddGuest = async (e) => {
     e.preventDefault()
     if (!formData.name || !formData.phone) return
 
-    const newGuest = {
-      id: `GST-00${guests.length + 1}`,
-      ...formData,
-      totalStays: 1,
-      lifetimeSpend: 0
-    }
+    try {
+      const payload = {
+        ...formData,
+        total_stays: 1,
+        lifetime_spend: 0
+      }
 
-    setGuests([newGuest, ...guests])
-    setShowAddModal(false)
-    setFormData({
-      name: '',
-      country: 'Sri Lanka',
-      phone: '',
-      email: '',
-      nicPassport: '',
-      tier: 'Regular Guest',
-      preferredRoom: 'Deluxe Room',
-      notes: ''
-    })
+      const res = await createGuest(payload)
+      setGuests([res.data, ...guests])
+      setShowAddModal(false)
+      setFormData({
+        name: '',
+        country: 'Sri Lanka',
+        phone: '',
+        email: '',
+        nic_passport: '',
+        tier: 'Regular Guest',
+        preferred_room: 'Deluxe Room',
+        notes: ''
+      })
+    } catch (err) {
+      alert('Error saving guest: ' + (err.response?.data?.message || err.message))
+    }
   }
 
-  const handleDelete = (id) => {
-    if (confirm('Delete this guest record?')) {
+  // Delete guest via DELETE from MySQL
+  const handleDelete = async (id) => {
+    if (!confirm('Delete this guest record from MySQL?')) return
+    try {
+      await deleteGuest(id)
       setGuests(guests.filter(g => g.id !== id))
+    } catch (err) {
+      alert('Failed to delete guest: ' + err.message)
     }
   }
 
@@ -171,7 +131,7 @@ export default function Guests() {
               </h1>
             </div>
             <p style={{ color: '#74c69d', fontSize: '14px', marginTop: '4px' }}>
-              Track guest profiles, loyalty tiers, lifetime spend, and personal hospitality preferences
+              Live customer records stored in MySQL via Laravel REST API
             </p>
           </div>
 
@@ -262,124 +222,132 @@ export default function Guests() {
           </div>
         </motion.div>
 
-        {/* Guests Table */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          style={{
-            background: 'rgba(255, 255, 255, 0.04)',
-            backdropFilter: 'blur(10px)',
-            border: '1px solid rgba(255, 255, 255, 0.08)',
-            borderRadius: '20px',
-            overflow: 'hidden'
-          }}
-        >
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ background: 'rgba(201,168,76,0.08)', borderBottom: '1px solid rgba(116,198,157,0.15)' }}>
-                {['Guest Name', 'Contact & Passport', 'Country', 'VIP Tier', 'Total Stays', 'Lifetime Spend', 'Preferences', 'Actions'].map(h => (
-                  <th key={h} style={{ textAlign: 'left', padding: '14px 16px', color: '#74c69d', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: '#a8b2aa' }}>
-                    No guests found matching search criteria.
-                  </td>
+        {/* Loading State */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#c9a84c' }}>
+            <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 12px auto' }} />
+            <p style={{ color: '#74c69d', fontSize: '14px' }}>Loading guests from database...</p>
+          </div>
+        ) : (
+          /* Guests Table */
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              backdropFilter: 'blur(10px)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              borderRadius: '20px',
+              overflow: 'hidden'
+            }}
+          >
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ background: 'rgba(201,168,76,0.08)', borderBottom: '1px solid rgba(116,198,157,0.15)' }}>
+                  {['Guest Name', 'Contact & Passport', 'Country', 'VIP Tier', 'Total Stays', 'Lifetime Spend', 'Preferences', 'Actions'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', padding: '14px 16px', color: '#74c69d', fontSize: '12px', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ) : (
-                filtered.map((guest, i) => (
-                  <tr
-                    key={guest.id}
-                    style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
-                  >
-                    {/* Name */}
-                    <td style={{ padding: '16px' }}>
-                      <div style={{ color: 'white', fontWeight: 600, fontSize: '14px' }}>{guest.name}</div>
-                      <span style={{ color: '#74c69d', fontSize: '11px' }}>{guest.id}</span>
-                    </td>
-
-                    {/* Contact & Passport */}
-                    <td style={{ padding: '16px', fontSize: '12px' }}>
-                      <div style={{ color: '#cbd5e1' }}>{guest.phone}</div>
-                      <div style={{ color: '#a8b2aa' }}>{guest.email}</div>
-                      <div style={{ color: '#f0c96b', fontSize: '11px', marginTop: '2px' }}>ID: {guest.nicPassport}</div>
-                    </td>
-
-                    {/* Country */}
-                    <td style={{ padding: '16px', color: 'white', fontSize: '13px' }}>
-                      {guest.country}
-                    </td>
-
-                    {/* Tier */}
-                    <td style={{ padding: '16px' }}>
-                      <span style={{
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: '5px',
-                        padding: '4px 10px',
-                        borderRadius: '20px',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        background: tierStyles[guest.tier]?.bg,
-                        color: tierStyles[guest.tier]?.color,
-                        border: `1px solid ${tierStyles[guest.tier]?.border}`
-                      }}>
-                        <Crown size={12} />
-                        {guest.tier}
-                      </span>
-                    </td>
-
-                    {/* Stays */}
-                    <td style={{ padding: '16px', color: 'white', fontWeight: 600, fontSize: '13px' }}>
-                      {guest.totalStays} {guest.totalStays === 1 ? 'Stay' : 'Stays'}
-                    </td>
-
-                    {/* Spend */}
-                    <td style={{ padding: '16px', color: '#c9a84c', fontWeight: 700, fontSize: '14px' }}>
-                      Rs. {guest.lifetimeSpend.toLocaleString()}
-                    </td>
-
-                    {/* Preferred room */}
-                    <td style={{ padding: '16px', fontSize: '12px', color: '#cbd5e1' }}>
-                      {guest.preferredRoom}
-                    </td>
-
-                    {/* Actions */}
-                    <td style={{ padding: '16px' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <button
-                          onClick={() => setSelectedGuestProfile(guest)}
-                          style={{
-                            padding: '6px 12px',
-                            background: 'rgba(201,168,76,0.15)',
-                            border: '1px solid rgba(201,168,76,0.3)',
-                            borderRadius: '8px',
-                            color: '#f0c96b',
-                            fontSize: '12px',
-                            cursor: 'pointer'
-                          }}
-                        >
-                          Profile
-                        </button>
-                        <button
-                          onClick={() => handleDelete(guest.id)}
-                          style={{ background: 'transparent', border: 'none', color: '#a8b2aa', cursor: 'pointer', padding: '4px' }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} style={{ textAlign: 'center', padding: '36px', color: '#a8b2aa' }}>
+                      No guests found in database.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </motion.div>
+                ) : (
+                  filtered.map((guest) => (
+                    <tr
+                      key={guest.id}
+                      style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}
+                    >
+                      {/* Name */}
+                      <td style={{ padding: '16px' }}>
+                        <div style={{ color: 'white', fontWeight: 600, fontSize: '14px' }}>{guest.name}</div>
+                        <span style={{ color: '#74c69d', fontSize: '11px' }}>ID: GST-{guest.id}</span>
+                      </td>
+
+                      {/* Contact & Passport */}
+                      <td style={{ padding: '16px', fontSize: '12px' }}>
+                        <div style={{ color: '#cbd5e1' }}>{guest.phone}</div>
+                        <div style={{ color: '#a8b2aa' }}>{guest.email || 'No email provided'}</div>
+                        <div style={{ color: '#f0c96b', fontSize: '11px', marginTop: '2px' }}>ID: {guest.nic_passport || 'N/A'}</div>
+                      </td>
+
+                      {/* Country */}
+                      <td style={{ padding: '16px', color: 'white', fontSize: '13px' }}>
+                        {guest.country}
+                      </td>
+
+                      {/* Tier */}
+                      <td style={{ padding: '16px' }}>
+                        <span style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '4px 10px',
+                          borderRadius: '20px',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                          background: tierStyles[guest.tier]?.bg || 'rgba(255,255,255,0.1)',
+                          color: tierStyles[guest.tier]?.color || '#ffffff',
+                          border: `1px solid ${tierStyles[guest.tier]?.border || 'rgba(255,255,255,0.2)'}`
+                        }}>
+                          <Crown size={12} />
+                          {guest.tier}
+                        </span>
+                      </td>
+
+                      {/* Stays */}
+                      <td style={{ padding: '16px', color: 'white', fontWeight: 600, fontSize: '13px' }}>
+                        {guest.total_stays} {guest.total_stays === 1 ? 'Stay' : 'Stays'}
+                      </td>
+
+                      {/* Spend */}
+                      <td style={{ padding: '16px', color: '#c9a84c', fontWeight: 700, fontSize: '14px' }}>
+                        Rs. {Number(guest.lifetime_spend).toLocaleString()}
+                      </td>
+
+                      {/* Preferred room */}
+                      <td style={{ padding: '16px', fontSize: '12px', color: '#cbd5e1' }}>
+                        {guest.preferred_room}
+                      </td>
+
+                      {/* Actions */}
+                      <td style={{ padding: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            onClick={() => setSelectedGuestProfile(guest)}
+                            style={{
+                              padding: '6px 12px',
+                              background: 'rgba(201,168,76,0.15)',
+                              border: '1px solid rgba(201,168,76,0.3)',
+                              borderRadius: '8px',
+                              color: '#f0c96b',
+                              fontSize: '12px',
+                              cursor: 'pointer'
+                            }}
+                          >
+                            Profile
+                          </button>
+                          <button
+                            onClick={() => handleDelete(guest.id)}
+                            style={{ background: 'transparent', border: 'none', color: '#a8b2aa', cursor: 'pointer', padding: '4px' }}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </motion.div>
+        )}
 
       </div>
 
@@ -439,11 +407,11 @@ export default function Guests() {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '20px' }}>
                 <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '14px' }}>
                   <span style={{ color: '#a8b2aa', fontSize: '11px' }}>TOTAL VISITS</span>
-                  <div style={{ color: 'white', fontWeight: 700, fontSize: '18px' }}>{selectedGuestProfile.totalStays} Stays</div>
+                  <div style={{ color: 'white', fontWeight: 700, fontSize: '18px' }}>{selectedGuestProfile.total_stays} Stays</div>
                 </div>
                 <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '12px', padding: '14px' }}>
                   <span style={{ color: '#a8b2aa', fontSize: '11px' }}>LIFETIME REVENUE</span>
-                  <div style={{ color: '#c9a84c', fontWeight: 700, fontSize: '18px' }}>Rs. {selectedGuestProfile.lifetimeSpend.toLocaleString()}</div>
+                  <div style={{ color: '#c9a84c', fontWeight: 700, fontSize: '18px' }}>Rs. {Number(selectedGuestProfile.lifetime_spend).toLocaleString()}</div>
                 </div>
               </div>
 
@@ -451,7 +419,7 @@ export default function Guests() {
               <div style={{ background: 'rgba(255,255,255,0.03)', borderRadius: '14px', padding: '16px', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px', marginBottom: '20px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#a8b2aa' }}>Passport / NIC:</span>
-                  <span style={{ color: 'white' }}>{selectedGuestProfile.nicPassport}</span>
+                  <span style={{ color: 'white' }}>{selectedGuestProfile.nic_passport || 'N/A'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#a8b2aa' }}>Nationality:</span>
@@ -463,11 +431,11 @@ export default function Guests() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#a8b2aa' }}>Email:</span>
-                  <span style={{ color: 'white' }}>{selectedGuestProfile.email}</span>
+                  <span style={{ color: 'white' }}>{selectedGuestProfile.email || 'N/A'}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <span style={{ color: '#a8b2aa' }}>Favorite Room:</span>
-                  <span style={{ color: '#f0c96b', fontWeight: 600 }}>{selectedGuestProfile.preferredRoom}</span>
+                  <span style={{ color: '#f0c96b', fontWeight: 600 }}>{selectedGuestProfile.preferred_room}</span>
                 </div>
               </div>
 
@@ -530,7 +498,7 @@ export default function Guests() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '22px', margin: 0 }}>
-                  Add Guest to CRM
+                  Add Guest to MySQL
                 </h3>
                 <button
                   onClick={() => setShowAddModal(false)}
@@ -588,8 +556,8 @@ export default function Guests() {
                     <input
                       type="text"
                       placeholder="1990456123V"
-                      value={formData.nicPassport}
-                      onChange={(e) => setFormData({ ...formData, nicPassport: e.target.value })}
+                      value={formData.nic_passport}
+                      onChange={(e) => setFormData({ ...formData, nic_passport: e.target.value })}
                       style={{
                         width: '100%',
                         padding: '10px 12px',
@@ -681,7 +649,7 @@ export default function Guests() {
                       cursor: 'pointer'
                     }}
                   >
-                    Save Guest
+                    Save to Database
                   </button>
                   <button
                     type="button"

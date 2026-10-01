@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   BedDouble,
@@ -8,20 +8,11 @@ import {
   Clock,
   Sparkles,
   Trash2,
-  X
+  X,
+  Loader2
 } from 'lucide-react'
 import Sidebar from '../components/Sidebar'
-
-const initialRooms = [
-  { id: 1, number: '101', type: 'Deluxe Room', floor: '1st Floor', beds: '1 King Bed', price: 8500, status: 'Available', amenities: ['WiFi', 'AC', 'TV', 'Balcony'] },
-  { id: 2, number: '102', type: 'Royal Ocean Suite', floor: '1st Floor', beds: '2 King Beds', price: 18500, status: 'Occupied', guest: 'Amal Perera', amenities: ['WiFi', 'AC', 'TV', 'Jacuzzi', 'Ocean View'] },
-  { id: 3, number: '103', type: 'Standard Nature Room', floor: '1st Floor', beds: '1 Queen Bed', price: 5500, status: 'Available', amenities: ['WiFi', 'AC', 'Coffee Maker'] },
-  { id: 4, number: '201', type: 'Deluxe Room', floor: '2nd Floor', beds: '1 King Bed', price: 8500, status: 'Reserved', guest: 'Nimal Silva', amenities: ['WiFi', 'AC', 'TV', 'Balcony'] },
-  { id: 5, number: '202', type: 'Royal Ocean Suite', floor: '2nd Floor', beds: '2 King Beds', price: 18500, status: 'Occupied', guest: 'Dr. John Smith', amenities: ['WiFi', 'AC', 'TV', 'Jacuzzi', 'Ocean View'] },
-  { id: 6, number: '203', type: 'Standard Nature Room', floor: '2nd Floor', beds: '2 Twin Beds', price: 5500, status: 'Cleaning', amenities: ['WiFi', 'AC'] },
-  { id: 7, number: '301', type: 'Presidential Villa', floor: '3rd Floor', beds: '3 King Beds', price: 35000, status: 'Available', amenities: ['WiFi', 'AC', 'TV', 'Private Pool', 'Butler Service'] },
-  { id: 8, number: '302', type: 'Deluxe Room', floor: '3rd Floor', beds: '1 King Bed', price: 8500, status: 'Cleaning', amenities: ['WiFi', 'AC', 'TV', 'Balcony'] },
-]
+import { getRooms, createRoom, updateRoom, deleteRoom } from '../api'
 
 const statusStyles = {
   Available: { bg: 'rgba(34, 197, 94, 0.15)', border: 'rgba(34, 197, 94, 0.4)', text: '#4ade80', icon: CheckCircle2 },
@@ -31,7 +22,8 @@ const statusStyles = {
 }
 
 export default function Rooms() {
-  const [rooms, setRooms] = useState(initialRooms)
+  const [rooms, setRooms] = useState([])
+  const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('All')
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -45,6 +37,23 @@ export default function Rooms() {
     amenities: 'WiFi, AC, TV'
   })
 
+  // Fetch rooms from Laravel REST API
+  const fetchLiveRooms = async () => {
+    try {
+      setLoading(true)
+      const res = await getRooms()
+      setRooms(res.data)
+    } catch (err) {
+      console.error('Failed to load rooms from Laravel API:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchLiveRooms()
+  }, [])
+
   // Filtered rooms based on status & search keyword
   const filteredRooms = rooms.filter(room => {
     const matchesFilter = filter === 'All' || room.status === filter
@@ -54,41 +63,57 @@ export default function Rooms() {
     return matchesFilter && matchesSearch
   })
 
-  const handleAddRoom = (e) => {
+  // Create room via API (POST to MySQL)
+  const handleAddRoom = async (e) => {
     e.preventDefault()
     if (!newRoom.number || !newRoom.price) return
 
-    const roomToAdd = {
-      id: Date.now(),
-      number: newRoom.number,
-      type: newRoom.type,
-      floor: newRoom.floor,
-      beds: newRoom.beds,
-      price: Number(newRoom.price),
-      status: newRoom.status,
-      amenities: newRoom.amenities.split(',').map(s => s.trim()).filter(Boolean)
+    try {
+      const payload = {
+        number: newRoom.number,
+        type: newRoom.type,
+        floor: newRoom.floor,
+        beds: newRoom.beds,
+        price: Number(newRoom.price),
+        status: newRoom.status,
+        amenities: newRoom.amenities.split(',').map(s => s.trim()).filter(Boolean)
+      }
+
+      const res = await createRoom(payload)
+      setRooms([res.data, ...rooms])
+      setShowModal(false)
+      setNewRoom({
+        number: '',
+        type: 'Deluxe Room',
+        floor: '1st Floor',
+        beds: '1 King Bed',
+        price: '',
+        status: 'Available',
+        amenities: 'WiFi, AC, TV'
+      })
+    } catch (err) {
+      alert('Error creating room: ' + (err.response?.data?.message || err.message))
     }
-
-    setRooms([roomToAdd, ...rooms])
-    setShowModal(false)
-    setNewRoom({
-      number: '',
-      type: 'Deluxe Room',
-      floor: '1st Floor',
-      beds: '1 King Bed',
-      price: '',
-      status: 'Available',
-      amenities: 'WiFi, AC, TV'
-    })
   }
 
-  const handleStatusChange = (id, newStatus) => {
-    setRooms(rooms.map(r => r.id === id ? { ...r, status: newStatus } : r))
+  // Update room status (PUT to MySQL)
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      await updateRoom(id, { status: newStatus })
+      setRooms(rooms.map(r => r.id === id ? { ...r, status: newStatus } : r))
+    } catch (err) {
+      alert('Failed to update room status: ' + err.message)
+    }
   }
 
-  const handleDeleteRoom = (id) => {
-    if (confirm('Are you sure you want to remove this room?')) {
+  // Delete room (DELETE from MySQL)
+  const handleDeleteRoom = async (id) => {
+    if (!confirm('Are you sure you want to remove this room from the database?')) return
+    try {
+      await deleteRoom(id)
       setRooms(rooms.filter(r => r.id !== id))
+    } catch (err) {
+      alert('Failed to delete room: ' + err.message)
     }
   }
 
@@ -113,7 +138,7 @@ export default function Rooms() {
               </h1>
             </div>
             <p style={{ color: '#74c69d', fontSize: '14px', marginTop: '4px' }}>
-              Manage hotel inventory, availability, and room maintenance status
+              Live inventory connected to Laravel REST API & MySQL
             </p>
           </div>
 
@@ -205,157 +230,165 @@ export default function Rooms() {
           </div>
         </motion.div>
 
-        {/* Rooms Grid */}
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
-          gap: '20px'
-        }}>
-          {filteredRooms.map((room, i) => {
-            const StatusIcon = statusStyles[room.status].icon
-            return (
-              <motion.div
-                key={room.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.05 * i }}
-                whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.04)',
-                  backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255, 255, 255, 0.08)',
-                  borderRadius: '16px',
-                  padding: '20px',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  position: 'relative'
-                }}
-              >
-                <div>
-                  {/* Card Header */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
-                    <div>
-                      <span style={{ fontSize: '11px', color: '#74c69d', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                        {room.floor}
-                      </span>
-                      <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'white', margin: '2px 0 0 0' }}>
-                        Room #{room.number}
-                      </h3>
-                      <p style={{ color: '#a8b2aa', fontSize: '13px', margin: 0 }}>{room.type}</p>
-                    </div>
-
-                    {/* Status Badge */}
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '5px',
-                      padding: '4px 10px',
-                      borderRadius: '20px',
-                      background: statusStyles[room.status].bg,
-                      border: `1px solid ${statusStyles[room.status].border}`,
-                      color: statusStyles[room.status].text,
-                      fontSize: '12px',
-                      fontWeight: 600
-                    }}>
-                      <StatusIcon size={13} />
-                      {room.status}
-                    </div>
-                  </div>
-
-                  {/* Bed Info & Occupant */}
-                  <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', margin: '10px 0' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a8b2aa', marginBottom: '4px' }}>
-                      <span>Bed Configuration:</span>
-                      <span style={{ color: 'white' }}>{room.beds}</span>
-                    </div>
-                    {room.guest && (
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a8b2aa' }}>
-                        <span>Current Guest:</span>
-                        <span style={{ color: '#f0c96b', fontWeight: 600 }}>{room.guest}</span>
+        {/* Loading State */}
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '60px', color: '#c9a84c' }}>
+            <Loader2 size={36} className="animate-spin" style={{ margin: '0 auto 12px auto' }} />
+            <p style={{ color: '#74c69d', fontSize: '14px' }}>Connecting to Royal Ceylon MySQL Database...</p>
+          </div>
+        ) : (
+          /* Rooms Grid */
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+            gap: '20px'
+          }}>
+            {filteredRooms.map((room, i) => {
+              const StatusIcon = statusStyles[room.status]?.icon || CheckCircle2
+              return (
+                <motion.div
+                  key={room.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.04 * i }}
+                  whileHover={{ y: -4, boxShadow: '0 12px 30px rgba(0,0,0,0.4)' }}
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    backdropFilter: 'blur(10px)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    borderRadius: '16px',
+                    padding: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    position: 'relative'
+                  }}
+                >
+                  <div>
+                    {/* Card Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
+                      <div>
+                        <span style={{ fontSize: '11px', color: '#74c69d', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                          {room.floor}
+                        </span>
+                        <h3 style={{ fontSize: '22px', fontWeight: 700, color: 'white', margin: '2px 0 0 0' }}>
+                          Room #{room.number}
+                        </h3>
+                        <p style={{ color: '#a8b2aa', fontSize: '13px', margin: 0 }}>{room.type}</p>
                       </div>
-                    )}
-                  </div>
 
-                  {/* Amenities Tags */}
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
-                    {room.amenities.map((a, idx) => (
-                      <span
-                        key={idx}
-                        style={{
-                          fontSize: '11px',
-                          padding: '3px 8px',
-                          borderRadius: '6px',
-                          background: 'rgba(64, 145, 108, 0.15)',
-                          color: '#74c69d',
-                          border: '1px solid rgba(64, 145, 108, 0.25)'
-                        }}
-                      >
-                        {a}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Card Footer */}
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                    <div>
-                      <span style={{ fontSize: '11px', color: '#a8b2aa' }}>Rate per night</span>
-                      <p style={{ color: '#c9a84c', fontSize: '18px', fontWeight: 700, margin: 0 }}>
-                        Rs. {room.price.toLocaleString()}
-                      </p>
-                    </div>
-
-                    {/* Change Status Dropdown */}
-                    <select
-                      value={room.status}
-                      onChange={(e) => handleStatusChange(room.id, e.target.value)}
-                      style={{
-                        background: 'rgba(255,255,255,0.08)',
-                        color: 'white',
-                        border: '1px solid rgba(255,255,255,0.15)',
-                        borderRadius: '8px',
-                        padding: '6px 10px',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        outline: 'none'
-                      }}
-                    >
-                      <option value="Available" style={{ background: '#0a1a0e' }}>Mark: Available</option>
-                      <option value="Occupied" style={{ background: '#0a1a0e' }}>Mark: Occupied</option>
-                      <option value="Reserved" style={{ background: '#0a1a0e' }}>Mark: Reserved</option>
-                      <option value="Cleaning" style={{ background: '#0a1a0e' }}>Mark: Cleaning</option>
-                    </select>
-                  </div>
-
-                  {/* Delete button */}
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <button
-                      onClick={() => handleDeleteRoom(room.id)}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: '#f87171',
-                        fontSize: '12px',
-                        cursor: 'pointer',
+                      {/* Status Badge */}
+                      <div style={{
                         display: 'flex',
                         alignItems: 'center',
-                        gap: '4px',
-                        opacity: 0.7
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = 0.7}
-                    >
-                      <Trash2 size={13} /> Remove
-                    </button>
-                  </div>
-                </div>
+                        gap: '5px',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        background: statusStyles[room.status]?.bg,
+                        border: `1px solid ${statusStyles[room.status]?.border}`,
+                        color: statusStyles[room.status]?.text,
+                        fontSize: '12px',
+                        fontWeight: 600
+                      }}>
+                        <StatusIcon size={13} />
+                        {room.status}
+                      </div>
+                    </div>
 
-              </motion.div>
-            )
-          })}
-        </div>
+                    {/* Bed Info & Occupant */}
+                    <div style={{ padding: '10px 0', borderTop: '1px solid rgba(255,255,255,0.06)', borderBottom: '1px solid rgba(255,255,255,0.06)', margin: '10px 0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a8b2aa', marginBottom: '4px' }}>
+                        <span>Bed Configuration:</span>
+                        <span style={{ color: 'white' }}>{room.beds}</span>
+                      </div>
+                      {room.guest && (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#a8b2aa' }}>
+                          <span>Current Guest:</span>
+                          <span style={{ color: '#f0c96b', fontWeight: 600 }}>{room.guest}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Amenities Tags */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '16px' }}>
+                      {Array.isArray(room.amenities) && room.amenities.map((a, idx) => (
+                        <span
+                          key={idx}
+                          style={{
+                            fontSize: '11px',
+                            padding: '3px 8px',
+                            borderRadius: '6px',
+                            background: 'rgba(64, 145, 108, 0.15)',
+                            color: '#74c69d',
+                            border: '1px solid rgba(64, 145, 108, 0.25)'
+                          }}
+                        >
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Card Footer */}
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                      <div>
+                        <span style={{ fontSize: '11px', color: '#a8b2aa' }}>Rate per night</span>
+                        <p style={{ color: '#c9a84c', fontSize: '18px', fontWeight: 700, margin: 0 }}>
+                          Rs. {Number(room.price).toLocaleString()}
+                        </p>
+                      </div>
+
+                      {/* Change Status Dropdown */}
+                      <select
+                        value={room.status}
+                        onChange={(e) => handleStatusChange(room.id, e.target.value)}
+                        style={{
+                          background: 'rgba(255,255,255,0.08)',
+                          color: 'white',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          borderRadius: '8px',
+                          padding: '6px 10px',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="Available" style={{ background: '#0a1a0e' }}>Mark: Available</option>
+                        <option value="Occupied" style={{ background: '#0a1a0e' }}>Mark: Occupied</option>
+                        <option value="Reserved" style={{ background: '#0a1a0e' }}>Mark: Reserved</option>
+                        <option value="Cleaning" style={{ background: '#0a1a0e' }}>Mark: Cleaning</option>
+                      </select>
+                    </div>
+
+                    {/* Delete button */}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <button
+                        onClick={() => handleDeleteRoom(room.id)}
+                        style={{
+                          background: 'transparent',
+                          border: 'none',
+                          color: '#f87171',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          opacity: 0.7
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.opacity = 1}
+                        onMouseLeave={(e) => e.currentTarget.style.opacity = 0.7}
+                      >
+                        <Trash2 size={13} /> Remove
+                      </button>
+                    </div>
+                  </div>
+
+                </motion.div>
+              )
+            })}
+          </div>
+        )}
 
       </div>
 
@@ -388,7 +421,7 @@ export default function Rooms() {
             >
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ fontFamily: 'Playfair Display, serif', color: '#c9a84c', fontSize: '22px', margin: 0 }}>
-                  Add New Room
+                  Add New Room to Database
                 </h3>
                 <button
                   onClick={() => setShowModal(false)}
@@ -547,7 +580,7 @@ export default function Rooms() {
                       cursor: 'pointer'
                     }}
                   >
-                    Save Room
+                    Save to MySQL
                   </button>
                   <button
                     type="button"
