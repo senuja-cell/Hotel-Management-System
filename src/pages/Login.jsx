@@ -65,23 +65,7 @@ export default function Login() {
         />
       ))}
 
-      {/* Floating leaves */}
-      {['🌿', '🍃', '🌱', '🍀', '🌾'].map((leaf, i) => (
-        <motion.div
-          key={i}
-          animate={{ y: [-20, 20, -20], rotate: [-10, 10, -10] }}
-          transition={{ duration: 3 + i, repeat: Infinity, delay: i * 0.4 }}
-          style={{
-            position: 'absolute',
-            fontSize: '24px',
-            opacity: 0.3,
-            top: `${15 + i * 15}%`,
-            left: `${5 + i * 18}%`,
-          }}
-        >
-          {leaf}
-        </motion.div>
-      ))}
+
 
       {/* Login Card */}
       <motion.div
